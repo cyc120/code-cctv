@@ -1,6 +1,6 @@
 ---
 name: show-your-shit
-description: Maintain a Chinese-first live Markdown monitor for AI-assisted programming work, especially when exposing progress through shit mountain code or messy legacy code. Use when the user wants to understand what Codex is doing, asks for a Chinese template, real-time visibility, progress monitoring, function locations, code-section explanations, beginner-friendly verification steps, an AI worklog, a flowchart, a decision log, a summary of coding work, or explicitly asks to use $show-your-shit while implementing, debugging, reviewing, testing, refactoring, or planning code changes.
+description: 定位你的ai编程。Maintain a Chinese-first live Markdown monitor for AI-assisted programming work, especially when exposing progress through shit mountain code or messy legacy code. Use when the user wants to understand what Codex is doing, asks for a Chinese template, real-time visibility, progress monitoring, function locations, code-section explanations, beginner-friendly verification steps, an AI worklog, a flowchart, a decision log, a summary of coding work, or explicitly asks to use $show-your-shit while implementing, debugging, reviewing, testing, refactoring, or planning code changes.
 ---
 
 # show your shit
