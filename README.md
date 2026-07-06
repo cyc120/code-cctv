@@ -17,6 +17,8 @@
 
 启用后，Codex 会在当前项目根目录维护 `AI_WORKLOG.md`，默认使用中文模板，包含：
 
+- 信息金字塔：最重要结论、风险、阻塞和下一步放在最前面
+- 模块图谱：每个代码模块都有表格说明和 Mermaid 图节点
 - 实时进度和 Mermaid 流程图
 - 正在查看、编辑、验证的文件
 - 函数定位：文件、行号、函数名、函数作用、怎么核对
@@ -48,6 +50,33 @@ python3 ~/plugins/code-cctv/scripts/watch_worklog.py --workspace "$PWD" --once
 ```
 
 建议写代码时同时打开 `AI_WORKLOG.md` 预览。Codex 负责记录交互和代码输出，监听器负责补充磁盘文件变化。
+
+## 信息金字塔和模块图
+
+新版日志默认按“金字塔”看：
+
+- `P0 先看结论`：当前最重要的结果、风险、阻塞或下一步。
+- `P1 再看模块`：本次涉及哪些模块，每个模块负责什么、依赖什么、有什么风险。
+- `P2 最后查细节`：实时记录、函数定位、代码段说明、验证命令和最终总结。
+
+模块图谱使用 Markdown 内置的 Mermaid：
+
+```mermaid
+flowchart TD
+    M0["模块：工作日志生成器"]
+    M0 --> M0C["代码：scripts/update_worklog.py"]
+    M0 --> M0R["职责：生成 AI_WORKLOG.md"]
+    M0 --> M0V["核对：运行脚本后查看日志"]
+    M0 -.-> M0K["风险：模块太多时图会变长"]
+```
+
+每个模块都应该写清楚：
+
+- `相关代码`：文件、函数或行号。
+- `职责`：这个模块到底负责什么。
+- `依赖`：它依赖哪个模块、配置、脚本或外部工具。
+- `风险`：改错后最可能影响哪里。
+- `怎么核对`：编程小白也能照着检查的步骤。
 
 ## 安装
 
@@ -120,6 +149,12 @@ codex plugin add code-cctv@personal
 使用 $code-cctv，开启自动更新模式。只要有交互、代码输出、工具命令、文件编辑或验证结果，就更新 AI_WORKLOG.md。
 ```
 
+按信息金字塔和模块图展示：
+
+```text
+使用 $code-cctv，按信息金字塔展示本次修改，并给每个代码模块生成 Mermaid 模块图。只要有交互或代码产出，就自动更新 AI_WORKLOG.md。
+```
+
 也可以更具体：
 
 ```text
@@ -133,7 +168,9 @@ codex plugin add code-cctv@personal
 更新工作日志：
 
 ```bash
-python3 scripts/update_worklog.py --workspace "$PWD" --language zh --status "侦察中" --focus "正在阅读项目上下文"
+python3 scripts/update_worklog.py --workspace "$PWD" --language zh --status "侦察中" --focus "正在阅读项目上下文" \
+  --top "P0 先看结论|正在定位问题入口|先看信息金字塔判断是否阻塞" \
+  --module "入口模块|src/app.py:1-80|接收请求并分发到业务逻辑|暂无|路由改错会影响页面访问|打开 src/app.py，确认入口函数和路由是否匹配"
 ```
 
 扫描 Python/JavaScript/TypeScript 函数位置：
@@ -154,6 +191,8 @@ python3 scripts/watch_worklog.py --workspace "$PWD"
 
 打开项目里的 `AI_WORKLOG.md`，优先看这几块：
 
+- `信息金字塔`：先看结论、风险和下一步。
+- `模块图谱`：看每个模块负责什么，和哪些文件、风险、核对方式相连。
 - `流程图`：看 AI 当前走到哪一步。
 - `实时记录`：看每次行动、证据和命令。
 - `函数定位`：按文件和行号跳到代码里，确认函数是不是它说的那个作用。

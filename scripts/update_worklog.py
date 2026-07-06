@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import re
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -28,6 +29,8 @@ TEXT = {
         "last_updated": "Last updated",
         "status": "Status",
         "focus": "Current focus",
+        "pyramid": "Information Pyramid",
+        "module_map": "Module Map",
         "flow": "Flow",
         "live_notes": "Live Notes",
         "files": "Files Touched",
@@ -38,6 +41,8 @@ TEXT = {
         "beginner_checks": "Beginner Verification Checklist",
         "risks": "Risks And Open Questions",
         "final": "Final Summary",
+        "priority_headers": ["Priority", "What to see first", "Evidence / next step"],
+        "module_headers": ["Module", "Related code", "Responsibility", "Depends on", "Risk", "How to verify"],
         "live_headers": ["Time", "Phase", "What changed", "Evidence"],
         "file_headers": ["File", "Purpose", "State"],
         "function_headers": ["Location", "Function", "Purpose", "How to verify"],
@@ -63,6 +68,8 @@ TEXT = {
         "last_updated": "最后更新",
         "status": "状态",
         "focus": "当前关注",
+        "pyramid": "信息金字塔",
+        "module_map": "模块图谱",
         "flow": "流程图",
         "live_notes": "实时记录",
         "files": "涉及文件",
@@ -73,6 +80,8 @@ TEXT = {
         "beginner_checks": "初学者核对清单",
         "risks": "风险与待确认",
         "final": "最终总结",
+        "priority_headers": ["优先级", "先看什么", "证据 / 下一步"],
+        "module_headers": ["模块", "相关代码", "职责", "依赖", "风险", "怎么核对"],
         "live_headers": ["时间", "阶段", "发生了什么", "证据"],
         "file_headers": ["文件", "用途", "状态"],
         "function_headers": ["位置", "函数", "作用", "怎么核对"],
@@ -92,6 +101,8 @@ TEXT = {
     },
 }
 HEADING_ALIASES = {
+    "priority": ["Information Pyramid", "信息金字塔"],
+    "modules": ["Module Map", "模块图谱"],
     "live_notes": ["Live Notes", "实时记录"],
     "files": ["Files Touched", "涉及文件"],
     "functions": ["Function Map", "函数定位"],
@@ -185,6 +196,8 @@ ZH_SUBSTRING_TRANSLATIONS = {
 class Worklog:
     status: str
     focus: str
+    priority: list[list[str]] = field(default_factory=list)
+    modules: list[list[str]] = field(default_factory=list)
     live_notes: list[list[str]] = field(default_factory=list)
     files: list[list[str]] = field(default_factory=list)
     functions: list[list[str]] = field(default_factory=list)
@@ -212,6 +225,20 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--phase", default=None, help="Phase for a new live note.")
     parser.add_argument("--note", default=None, help="Text for a new live note.")
     parser.add_argument("--evidence", default="", help="Evidence for a new live note.")
+    parser.add_argument(
+        "--priority",
+        "--top",
+        dest="priority",
+        action="append",
+        default=[],
+        help="Information pyramid row: priority|what to see first|evidence or next step.",
+    )
+    parser.add_argument(
+        "--module",
+        action="append",
+        default=[],
+        help="Module row: module|related code|responsibility|depends on|risk|how to verify.",
+    )
     parser.add_argument("--touch", action="append", default=[], help="Touched file row: path|purpose|state.")
     parser.add_argument("--function", action="append", default=[], help="Function row: location|function|purpose|how to verify.")
     parser.add_argument("--segment", action="append", default=[], help="Code segment row: location|segment|what it does|beginner check.")
@@ -275,7 +302,7 @@ def parse_final(lines: list[str]) -> str:
         return ""
     collected: list[str] = []
     for line in lines[start + 2 :]:
-        if line.startswith(END) or line.startswith(LEGACY_END):
+        if line.startswith(END) or line.startswith(LEGACY_END) or line.startswith(OLDER_LEGACY_END):
             break
         collected.append(line)
     final = "\n".join(collected).strip()
@@ -325,6 +352,8 @@ def load_worklog(path: Path, language: str) -> Worklog:
     return Worklog(
         status=status,
         focus=focus,
+        priority=parse_table(lines, HEADING_ALIASES["priority"], 3),
+        modules=parse_table(lines, HEADING_ALIASES["modules"], 6),
         live_notes=parse_table(lines, HEADING_ALIASES["live_notes"], 4),
         files=parse_table(lines, HEADING_ALIASES["files"], 3),
         functions=parse_table(lines, HEADING_ALIASES["functions"], 4),
@@ -355,6 +384,8 @@ def normalize_worklog_language(worklog: Worklog, language: str) -> None:
         return
     worklog.status = translate_cell(worklog.status, language)
     worklog.focus = translate_cell(worklog.focus, language)
+    worklog.priority = translate_rows(worklog.priority, language)
+    worklog.modules = translate_rows(worklog.modules, language)
     worklog.live_notes = translate_rows(worklog.live_notes, language)
     worklog.files = translate_rows(worklog.files, language)
     worklog.functions = translate_rows(worklog.functions, language)
@@ -417,6 +448,70 @@ def mermaid_label(value: str) -> str:
     return value.replace("\\", "\\\\").replace('"', '\\"')
 
 
+def compact_label(value: str, fallback: str, limit: int = 72) -> str:
+    cleaned = " ".join(value.split()).strip()
+    if not cleaned:
+        return fallback
+    if len(cleaned) <= limit:
+        return cleaned
+    return f"{cleaned[: limit - 3]}..."
+
+
+def is_emptyish(value: str) -> bool:
+    return value.strip().lower() in {"", "-", "none", "n/a", "no", "暂无", "无", "待补充"}
+
+
+def split_dependencies(value: str) -> list[str]:
+    if is_emptyish(value):
+        return []
+    return [part.strip() for part in re.split(r"[,，、;/；\n]+", value) if part.strip()]
+
+
+def render_module_graph(modules: list[list[str]], language: str) -> str:
+    labels = TEXT[language]
+    if not modules:
+        empty = mermaid_label(labels["none"])
+        return f"""```mermaid
+flowchart TD
+    M0["{empty}"]
+```
+"""
+
+    lines = ["```mermaid", "flowchart TD"]
+    normalized_names: dict[str, str] = {}
+    for index, row in enumerate(modules):
+        module, *_ = row + [""] * (6 - len(row))
+        normalized_names[module.casefold()] = f"M{index}"
+
+    for index, row in enumerate(modules):
+        module, related_code, responsibility, dependencies, risk, verify = (row + [""] * 6)[:6]
+        module_id = f"M{index}"
+        module_label = mermaid_label(f"模块：{compact_label(module, labels['none'], 48)}")
+        code_label = mermaid_label(f"代码：{compact_label(related_code, labels['none'], 68)}")
+        responsibility_label = mermaid_label(f"职责：{compact_label(responsibility, labels['none'], 68)}")
+        verify_label = mermaid_label(f"核对：{compact_label(verify, labels['none'], 68)}")
+
+        lines.append(f'    {module_id}["{module_label}"]')
+        lines.append(f'    {module_id} --> {module_id}C["{code_label}"]')
+        lines.append(f'    {module_id} --> {module_id}R["{responsibility_label}"]')
+        lines.append(f'    {module_id} --> {module_id}V["{verify_label}"]')
+
+        if not is_emptyish(risk):
+            risk_label = mermaid_label(f"风险：{compact_label(risk, labels['none'], 62)}")
+            lines.append(f'    {module_id} -.-> {module_id}K["{risk_label}"]')
+
+        for dep_index, dependency in enumerate(split_dependencies(dependencies)):
+            target_id = normalized_names.get(dependency.casefold())
+            if target_id and target_id != module_id:
+                lines.append(f"    {module_id} -.-> {target_id}")
+            elif not target_id:
+                dep_label = mermaid_label(f"依赖：{compact_label(dependency, labels['none'], 54)}")
+                lines.append(f'    {module_id} -.-> {module_id}D{dep_index}["{dep_label}"]')
+
+    lines.append("```")
+    return "\n".join(lines) + "\n"
+
+
 def render_flow(status: str, language: str) -> str:
     status_label = mermaid_label(status)
     node_goal, node_read, node_plan, node_edit, node_validate, node_summarize, node_status = [
@@ -444,6 +539,15 @@ def render_worklog(worklog: Worklog, timestamp: str, language: str) -> str:
 {labels["status"]}：{worklog.status}
 {labels["focus"]}：{worklog.focus}
 
+## {labels["pyramid"]}
+
+{render_table(labels["priority_headers"], worklog.priority)}
+
+## {labels["module_map"]}
+
+{render_table(labels["module_headers"], worklog.modules)}
+
+{render_module_graph(worklog.modules, language)}
 ## {labels["flow"]}
 
 {render_flow(worklog.status, language)}
@@ -517,6 +621,8 @@ def main() -> None:
                 args.evidence,
             ]
         )
+    merge_unique(worklog.priority, [split_row(row, 3) for row in args.priority])
+    merge_unique(worklog.modules, [split_row(row, 6) for row in args.module])
     merge_unique(worklog.files, [split_row(row, 3) for row in args.touch])
     merge_unique(worklog.functions, [split_row(row, 4) for row in args.function])
     merge_unique(worklog.segments, [split_row(row, 4) for row in args.segment])

@@ -1,6 +1,6 @@
 ---
 name: code-cctv
-description: Code CCTV 定位你的ai编程。Maintain a Chinese-first live Markdown monitor for AI-assisted programming work, especially when the user asks for automated updates, says update my md, wants every interaction or code output recorded, or needs progress through messy legacy code exposed. Use when the user wants to understand what Codex is doing, asks for a Chinese template, real-time visibility, progress monitoring, function locations, code-section explanations, beginner-friendly verification steps, an AI worklog, a flowchart, a decision log, a summary of coding work, or explicitly asks to use $code-cctv while implementing, debugging, reviewing, testing, refactoring, or planning code changes.
+description: Code CCTV 定位你的ai编程。Maintain a Chinese-first live Markdown monitor for AI-assisted programming work, with information-pyramid summaries, Mermaid module diagrams, function locations, code-section explanations, and beginner verification checks. Use when the user asks for automated updates, says update my md, wants every interaction or code output recorded, needs code modules visualized, wants important information shown first, or needs progress through messy legacy code exposed. Use when the user wants to understand what Codex is doing, asks for a Chinese template, real-time visibility, progress monitoring, function locations, code-section explanations, beginner-friendly verification steps, an AI worklog, a flowchart, a decision log, a summary of coding work, or explicitly asks to use $code-cctv while implementing, debugging, reviewing, testing, refactoring, or planning code changes.
 ---
 
 # Code CCTV
@@ -11,15 +11,17 @@ When this skill is invoked or implicitly selected, treat the monitor as active f
 
 ## Required behavior
 
-1. At the start of the task, create or refresh `AI_WORKLOG.md` with the current goal, status, and a Mermaid flowchart.
+1. At the start of the task, create or refresh `AI_WORKLOG.md` with the current goal, status, information-pyramid summary, module map, and Mermaid flowcharts.
 2. During work, update the file after every meaningful user interaction, code output, tool batch, file edit, validation run, blocker, changed assumption, or completion step. If the user asks for automated updates, update the file whenever there is interaction or code output, even if no source file changed.
 3. Before producing a substantial code snippet, patch, command sequence, or implementation explanation to the user, record the intent in `AI_WORKLOG.md`; after the tool work or code output, record what actually happened and the evidence.
 4. When using tools, update the file before the first user-visible tool work when feasible and after each meaningful tool batch. For long tasks, do not leave the Markdown stale while Codex continues working.
-5. Keep the monitor factual and compact. Prefer specific files, commands, decisions, and evidence over broad narration.
-6. For code changes or code explanation tasks, fill the function and code-section tables with file paths and line numbers. Explain what each function/section does in beginner-friendly Chinese.
-7. Add beginner verification checks that tell the user exactly what to inspect, how to inspect it, and what result to expect.
-8. Preserve visibility even when no code changes are made. Record analysis-only work, reviewed files, and conclusions.
-9. End every monitored task by writing a final summary section with what changed, verification, residual risks, and next suggested action when useful.
+5. Use information-pyramid order throughout the Markdown: put the most important conclusion, risk, blocker, and next action first; then show module diagrams; then show workflow, live notes, files, functions, code sections, decisions, validation, and final details.
+6. For code changes or code explanation tasks, fill the module table before the function and code-section tables. Each module should include its responsibility, related files/functions, dependencies, risks, and beginner-friendly verification.
+7. Render a Mermaid module graph for code work. Each relevant module should appear as a graph node connected to its related code, responsibility, verification point, and risk or dependency when present.
+8. For code changes or code explanation tasks, fill the function and code-section tables with file paths and line numbers. Explain what each function/section does in beginner-friendly Chinese.
+9. Add beginner verification checks that tell the user exactly what to inspect, how to inspect it, and what result to expect.
+10. Preserve visibility even when no code changes are made. Record analysis-only work, reviewed files, and conclusions.
+11. End every monitored task by writing a final summary section with what changed, verification, residual risks, and next suggested action when useful.
 
 Update triggers include:
    - starting context discovery
@@ -43,6 +45,24 @@ Use these Chinese sections in this order:
 最后更新：YYYY-MM-DD HH:MM:SS CST
 状态：侦察中 | 制定方案 | 修改中 | 验证中 | 阻塞 | 完成
 当前关注：一句话说明我现在正在处理什么。
+
+## 信息金字塔
+
+| 优先级 | 先看什么 | 证据 / 下一步 |
+| --- | --- | --- |
+
+## 模块图谱
+
+| 模块 | 相关代码 | 职责 | 依赖 | 风险 | 怎么核对 |
+| --- | --- | --- | --- | --- | --- |
+
+```mermaid
+flowchart TD
+    M0["模块：示例模块"]
+    M0 --> M0C["代码：src/example.py"]
+    M0 --> M0R["职责：说明这个模块负责什么"]
+    M0 --> M0V["核对：打开文件确认逻辑"]
+```
 
 ## 流程图
 
@@ -117,7 +137,15 @@ Use `--language zh` explicitly when the user asks for Chinese, though Chinese is
 python3 scripts/update_worklog.py --workspace "$PWD" --language zh --status "侦察中" --focus "正在阅读项目上下文" --phase "开始" --note "已建立中文监控文件" --evidence "用户要求中文模板"
 ```
 
-The script is deterministic and can initialize the file, append live notes, record touched files, decisions, validation results, risks, and final summaries. It rewrites the monitored sections between stable markers, so it is safer than ad hoc Markdown editing for repeated updates. It can also parse old English headings and then re-render the monitor in Chinese.
+The script is deterministic and can initialize the file, append live notes, record priority summaries, module maps, touched files, decisions, validation results, risks, and final summaries. It rewrites the monitored sections between stable markers, so it is safer than ad hoc Markdown editing for repeated updates. It can also parse old English headings and then re-render the monitor in Chinese.
+
+Add information-pyramid rows and module diagrams with:
+
+```bash
+python3 scripts/update_worklog.py --workspace "$PWD" --language zh \
+  --top "P0 先看结论|当前最重要的变化、风险或下一步|打开本节先判断是否阻塞" \
+  --module "登录模块|src/auth.py:1-120|处理登录输入、校验和返回结果|配置模块|账号边界条件可能漏测|运行登录测试，并手动尝试错误密码"
+```
 
 Add beginner-facing code maps with:
 
