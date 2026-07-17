@@ -175,6 +175,14 @@ python3 scripts/watch_worklog.py --workspace "$PWD" --once
 
 The watcher records file creation, modification, and deletion into `AI_WORKLOG.md`. It does not read chat messages; interaction and code-output updates remain Codex's responsibility while this skill is active.
 
+## Local service mode
+
+When the macOS Code CCTV service is installed, `scripts/update_worklog.py` also sends a best-effort structured summary event to the local service. The event contains the workspace, phase, status, focus, short note, evidence, and touched file paths; it does not contain raw chat transcripts.
+
+The service is optional. If it is unavailable, the Markdown update must still succeed. Do not describe the service as a universal background chat monitor: file changes are automatic, while user interaction, tool output, code output, validation, blockers, and decisions are reported by Codex following this skill.
+
+The floating preview should show project-level summaries across workspaces. Keep detailed raw output in the project files or optional Markdown worklog, and keep the global view limited to status, phase, focus, recent summary, event type, and timestamps.
+
 Before using the script, inspect `scripts/update_worklog.py` if behavior changes are needed. Otherwise it can be executed directly.
 
 ## Cadence

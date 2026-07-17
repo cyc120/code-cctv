@@ -4,3 +4,5 @@ __pycache__/
 .venv/
 venv/
 AI_WORKLOG.md
+build/
+dist/

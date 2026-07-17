@@ -1,215 +1,297 @@
 # Code CCTV
 
-定位你的ai编程。
+定位你的 AI 编程。
 
-`Code CCTV` 是一个 Codex 本地插件，用中文 `AI_WORKLOG.md` 把 AI 辅助编程过程展开给人看。它适合在你看不懂 AI 正在改什么、为什么这么改、改动到底落在哪些函数和代码段时使用。
+Code CCTV 是一个 Codex 本地插件：它把 AI 辅助编程过程整理成中文 `AI_WORKLOG.md`，让你能看见当前改了什么、为什么改、落在哪些模块，以及如何验证结果。macOS 上还可以启用可选的本地后台服务和浮窗，把多个工作区的结构化状态汇总到一个全局预览中。
 
-名字里的 `CCTV` 是玩笑版“代码监控摄像头”：不是偷偷监视人，而是让 AI 别把处理屎山代码的过程藏起来。
+## 适合谁
 
-## 它解决什么
+- 想看懂 AI 正在修改什么，而不是只看一句“已完成”。
+- 正在处理陌生项目、遗留项目或复杂代码，想快速建立模块地图。
+- 需要把函数位置、关键代码段、命令证据和验证步骤留档。
+- 希望在 macOS 桌面上实时查看多个工作区的摘要。
 
-- AI 辅助编程时，用户只能看聊天记录，很难定位真实改动。
-- 编程小白不知道每个函数、每段代码到底负责什么。
-- AI 说“已修复”但缺少证据、命令、文件和核对方式。
-- 老项目或屎山代码里，改动路径容易绕，事后很难复盘。
+## 核心能力
 
-## 输出效果
+### 1. 中文工作日志
 
-启用后，Codex 会在当前项目根目录维护 `AI_WORKLOG.md`，默认使用中文模板，包含：
+启用 `$code-cctv` 后，Codex 会在当前工作区根目录维护 `AI_WORKLOG.md`，默认按信息金字塔组织内容：
 
-- 信息金字塔：最重要结论、风险、阻塞和下一步放在最前面
-- 模块图谱：每个代码模块都有表格说明和 Mermaid 图节点
-- 实时进度和 Mermaid 流程图
-- 正在查看、编辑、验证的文件
-- 函数定位：文件、行号、函数名、函数作用、怎么核对
-- 代码片段说明：这段代码在做什么、初学者该看哪里
-- 决策记录：为什么这样改，有什么取舍
-- 验证结果：运行了什么命令，结果是什么
-- 初学者核对清单：按步骤检查，不靠猜
-- 风险与最终总结：还需要注意什么
+1. 先看结论、风险、阻塞和下一步。
+2. 再看模块图谱和 Mermaid 关系图。
+3. 最后查看实时记录、涉及文件、函数定位、代码片段说明、决策、验证和初学者核对清单。
 
-`AI_WORKLOG.md` 不是后台偷偷采集的遥测，而是 Codex 在工作时主动维护的可读工作日志。它的目标是让你能顺着文件、函数和命令把 AI 的操作查回去。
+日志是 Codex 在任务中主动维护的可读记录，不是偷偷采集的聊天遥测。
 
-## 自动更新模式
+### 2. 文件变化监听
 
-你要的“边写代码边看流程”主要靠两层实现：
+`watch_worklog.py` 可以监听工作区文件的新增、修改和删除，并把变化摘要追加到 `AI_WORKLOG.md`。它不读取聊天内容；用户互动、代码输出、工具结果和验证结果仍由 Codex 按 skill 规范主动记录。
 
-- 技能启用后：只要有用户互动、代码输出、工具命令、文件编辑、验证结果或阻塞信息，Codex 都应该更新 `AI_WORKLOG.md`。
-- 可选文件监听器：`watch_worklog.py` 会监听工作区文件的新增、修改、删除，并自动把变化写进 `AI_WORKLOG.md`。
+### 3. macOS 实时状态服务
 
-开启文件监听器：
+可选的后台服务只绑定 `127.0.0.1`，接收结构化摘要事件，并保存到本机 SQLite：
 
-```bash
-python3 ~/plugins/code-cctv/scripts/watch_worklog.py --workspace "$PWD"
+```text
+~/Library/Application Support/CodeCCTV/state.sqlite3
 ```
 
-只检查一次文件变化：
+浮窗通过 SSE 订阅实时状态，点击后可进入全局预览。服务记录工作区、阶段、状态、焦点、摘要、证据、文件列表和时间，不记录原始聊天全文，也不会主动向网络上传内容。
 
-```bash
-python3 ~/plugins/code-cctv/scripts/watch_worklog.py --workspace "$PWD" --once
-```
+### 4. ChatGPT 生命周期跟随
 
-建议写代码时同时打开 `AI_WORKLOG.md` 预览。Codex 负责记录交互和代码输出，监听器负责补充磁盘文件变化。
+运行 `manage_service.py install` 后会安装一个无界面的生命周期 watcher：
 
-## 信息金字塔和模块图
+- watcher 在用户登录后负责检查 ChatGPT 是否运行，但不会自己显示浮窗。
+- 检测到 `/Applications/ChatGPT.app` 运行时，才启动 daemon 和浮窗。
+- ChatGPT 退出后，daemon 和浮窗自动停止。
+- 它跟随的是 ChatGPT.app 进程存活状态，不是某个会话是否正在生成，因为目前没有稳定的公开会话状态 hook。
+- 从 Codex 卸载插件后，watcher 检测到插件缓存消失，等待 15 秒确认不是重装切换，再停止子服务并清理自己的 LaunchAgent。
 
-新版日志默认按“金字塔”看：
+### 5. 浮窗交互
 
-- `P0 先看结论`：当前最重要的结果、风险、阻塞或下一步。
-- `P1 再看模块`：本次涉及哪些模块，每个模块负责什么、依赖什么、有什么风险。
-- `P2 最后查细节`：实时记录、函数定位、代码段说明、验证命令和最终总结。
+浮窗默认显示为可拖动胶囊，并提供以下入口：
 
-模块图谱使用 Markdown 内置的 Mermaid：
+- 单击：展开消息泡泡，显示最近项目、阶段、焦点和摘要。
+- 双击：打开全局预览窗口。
+- 拖动：移动浮窗，位置会保存到当前用户的偏好设置。
+- 泡泡中的 `×`：关闭当前消息泡泡。
+- 泡泡中的收起按钮：回到胶囊状态。
+- 泡泡中的隐藏按钮：隐藏浮窗，但保留菜单栏入口。
+- 右键：打开全局预览、显示/收起泡泡或隐藏浮窗。
+- 菜单栏图标：重新显示浮窗、打开全局预览或退出 Code CCTV。
+
+不要在已经安装常驻服务时再次运行 `scripts/run_macos_app.sh`，否则手动启动的 app 和 LaunchAgent 启动的浮窗可能同时出现。
+
+## 工作流
 
 ```mermaid
-flowchart TD
-    M0["模块：工作日志生成器"]
-    M0 --> M0C["代码：scripts/update_worklog.py"]
-    M0 --> M0R["职责：生成 AI_WORKLOG.md"]
-    M0 --> M0V["核对：运行脚本后查看日志"]
-    M0 -.-> M0K["风险：模块太多时图会变长"]
+flowchart LR
+    A["Codex 线程 + code-cctv skill"] --> B["update_worklog.py"]
+    B --> C["工作区 AI_WORKLOG.md"]
+    B --> D["event_client.py"]
+    D --> E["127.0.0.1 本地 daemon"]
+    E --> F["SQLite 状态库"]
+    E --> G["SSE 实时流"]
+    G --> H["macOS 浮窗与全局预览"]
+    I["ChatGPT.app 进程"] --> J["生命周期 watcher"]
+    J --> E
+    J --> H
 ```
 
-每个模块都应该写清楚：
+## 安装插件
 
-- `相关代码`：文件、函数或行号。
-- `职责`：这个模块到底负责什么。
-- `依赖`：它依赖哪个模块、配置、脚本或外部工具。
-- `风险`：改错后最可能影响哪里。
-- `怎么核对`：编程小白也能照着检查的步骤。
-
-## 安装
-
-把仓库放到本机插件目录：
+### 从 GitHub 克隆
 
 ```bash
 mkdir -p ~/plugins
-git clone https://github.com/cyc120/code-cctv.git ~/plugins/code-cctv
+git clone git@github.com:cyc120/code-cctv.git ~/plugins/code-cctv
 ```
 
-如果你还没有个人插件市场，可以创建或编辑 `~/.agents/plugins/marketplace.json`，在 `plugins` 数组里加入：
+如果已经存在同名目录，使用：
 
-```json
-{
-  "name": "code-cctv",
-  "source": {
-    "source": "local",
-    "path": "./plugins/code-cctv"
-  },
-  "policy": {
-    "installation": "AVAILABLE",
-    "authentication": "ON_INSTALL"
-  },
-  "category": "Productivity"
-}
+```bash
+git -C ~/plugins/code-cctv pull --ff-only
 ```
 
-一个最小完整示例：
-
-```json
-{
-  "name": "personal",
-  "interface": {
-    "displayName": "Personal"
-  },
-  "plugins": [
-    {
-      "name": "code-cctv",
-      "source": {
-        "source": "local",
-        "path": "./plugins/code-cctv"
-      },
-      "policy": {
-        "installation": "AVAILABLE",
-        "authentication": "ON_INSTALL"
-      },
-      "category": "Productivity"
-    }
-  ]
-}
-```
-
-然后安装插件：
+确保个人插件市场的 `code-cctv` 条目指向这份本地目录，然后安装或刷新插件：
 
 ```bash
 codex plugin add code-cctv@personal
 ```
 
-更新本地插件后，可以重新安装一次，让 Codex 读取最新版本：
+更新插件代码后，需要重新执行一次上面的命令；刷新后建议新开一个 Codex 线程，让新版本 skill 完整生效。
 
-```bash
-codex plugin add code-cctv@personal
-```
+### 第一次使用
 
-## 使用
-
-新开 Codex 线程后，可以直接这样说：
+在新的 Codex 线程中输入：
 
 ```text
-使用 $code-cctv，开启自动更新模式。只要有交互、代码输出、工具命令、文件编辑或验证结果，就更新 AI_WORKLOG.md。
+使用 $code-cctv，开启中文实时工作日志。请按信息金字塔展示结论，生成模块 Mermaid 图，标注函数和代码段位置，并给出初学者核对清单。
 ```
 
-按信息金字塔和模块图展示：
+日志会写入当前项目根目录，而不是写入插件目录。
 
-```text
-使用 $code-cctv，按信息金字塔展示本次修改，并给每个代码模块生成 Mermaid 模块图。只要有交互或代码产出，就自动更新 AI_WORKLOG.md。
-```
+## 启用 macOS 常驻服务
 
-也可以更具体：
-
-```text
-使用 $code-cctv，帮我修这个 bug。请在 AI_WORKLOG.md 里定位每个相关函数，说明每段关键代码在干嘛，并给我小白也能照着检查的核对清单。
-```
-
-## 脚本
-
-插件内置三个辅助脚本，Codex 可以在需要时调用。
-
-更新工作日志：
+macOS 浮窗构建脚本当前面向 Apple Silicon、macOS 13+：
 
 ```bash
-python3 scripts/update_worklog.py --workspace "$PWD" --language zh --status "侦察中" --focus "正在阅读项目上下文" \
-  --top "P0 先看结论|正在定位问题入口|先看信息金字塔判断是否阻塞" \
-  --module "入口模块|src/app.py:1-80|接收请求并分发到业务逻辑|暂无|路由改错会影响页面访问|打开 src/app.py，确认入口函数和路由是否匹配"
+cd ~/plugins/code-cctv
+python3 scripts/manage_service.py install
+python3 scripts/manage_service.py status
 ```
 
-扫描 Python/JavaScript/TypeScript 函数位置：
+`install` 会在需要时构建 `dist/CodeCCTV.app`，并安装三个用户级 LaunchAgent：
+
+```text
+com.code-cctv.lifecycle   ChatGPT 生命周期 watcher
+com.code-cctv.daemon      本地 HTTP/SSE 服务
+com.code-cctv.floating    菜单栏图标与浮窗
+```
+
+常用命令：
 
 ```bash
-python3 scripts/scan_code_map.py src tests
+python3 scripts/manage_service.py status   # 查看 ChatGPT、watcher、daemon、浮窗状态
+python3 scripts/manage_service.py sync     # 立即按 ChatGPT 当前状态同步子服务
+python3 scripts/manage_service.py stop     # 停止 watcher 和子服务，但保留 LaunchAgent 文件
+python3 scripts/manage_service.py start    # 恢复跟随模式
+python3 scripts/manage_service.py uninstall # 停止并删除 LaunchAgent
 ```
 
-监听文件变化并更新工作日志：
+卸载服务不会删除本地状态库；如需清理历史摘要，可手动删除：
+
+```text
+~/Library/Application Support/CodeCCTV/
+```
+
+### 不需要常驻服务时
+
+只使用 `AI_WORKLOG.md` 不需要安装 macOS 服务。也可以手动监听文件变化：
 
 ```bash
 python3 scripts/watch_worklog.py --workspace "$PWD"
 ```
 
-扫描脚本只生成行号骨架。真正给初学者看的解释，应该由 Codex 结合上下文补全。
+单次检查：
 
-## 初学者怎么看
+```bash
+python3 scripts/watch_worklog.py --workspace "$PWD" --once
+```
 
-打开项目里的 `AI_WORKLOG.md`，优先看这几块：
+手动打开浮窗仅用于临时调试：
 
-- `信息金字塔`：先看结论、风险和下一步。
-- `模块图谱`：看每个模块负责什么，和哪些文件、风险、核对方式相连。
-- `流程图`：看 AI 当前走到哪一步。
-- `实时记录`：看每次行动、证据和命令。
-- `函数定位`：按文件和行号跳到代码里，确认函数是不是它说的那个作用。
-- `代码片段说明`：理解关键代码段为什么要改。
-- `验证结果`：确认测试、构建或检查命令是否跑过。
-- `初学者核对清单`：照着一步步检查结果。
+```bash
+scripts/run_macos_app.sh
+```
 
-## 适用场景
+它不会替代 ChatGPT 生命周期模式；若已安装常驻服务，请先退出手动启动的 app，避免出现两个浮窗入口。
 
-- 让 AI 修改陌生项目或遗留项目。
-- 你想知道 AI 每一步到底做了什么。
-- 你需要向别人解释本次改动的证据链。
-- 你是编程新手，希望把函数、代码段和验证步骤看清楚。
+## 本地服务 API
 
-## 当前限制
+配置文件和令牌位于：
 
-- 它不是全局后台聊天监听器；需要在任务中启用 `$code-cctv`，由 Codex 按交互和代码输出维护日志。
-- `watch_worklog.py` 监听的是文件变化，不读取聊天消息。
-- 函数扫描目前主要覆盖 Python、JavaScript、TypeScript 的常见函数形态。
-- 扫描结果只是定位骨架，真正准确的解释仍需要 Codex 结合项目上下文补全。
+```text
+~/Library/Application Support/CodeCCTV/service.json
+```
+
+除 `/health` 外，接口都要求请求头 `X-Code-CCTV-Token`。接口只应在本机使用：
+
+| 方法 | 路径 | 用途 |
+| --- | --- | --- |
+| GET | `/health` | 检查服务是否存活 |
+| GET | `/api/state` | 获取全部工作区的当前摘要 |
+| GET | `/api/stream` | 通过 SSE 订阅状态更新 |
+| POST | `/api/events` | 写入一条结构化工作事件 |
+
+工作日志更新器会尽力上报事件；daemon 不可用时，Markdown 写入仍会继续，不会因为浮窗服务故障而阻塞编程任务。
+
+## 目录结构
+
+| 路径 | 作用 |
+| --- | --- |
+| `.codex-plugin/plugin.json` | 插件名称、版本、技能入口和界面元数据 |
+| `skills/code-cctv/SKILL.md` | 中文工作日志、模块图谱和验证规范 |
+| `skills/code-cctv/assets/` | skill 使用的图标与中文日志模板 |
+| `scripts/update_worklog.py` | 生成和更新 `AI_WORKLOG.md` |
+| `scripts/watch_worklog.py` | 监听工作区文件变化 |
+| `scripts/event_client.py` | 向本机 daemon 上报摘要事件 |
+| `scripts/manage_service.py` | 安装、同步、停止和卸载 macOS 服务 |
+| `scripts/chatgpt_lifecycle.py` | 检查 ChatGPT 进程并负责卸载后的自清理 |
+| `daemon/` | 本地 HTTP、SSE 和 SQLite 状态服务 |
+| `macos/` | Swift 菜单栏图标、浮窗和全局预览 |
+| `tests/` | Python 脚本和 daemon 单元测试 |
+
+## 常用脚本
+
+按文件扩展名生成函数定位骨架：
+
+```bash
+python3 scripts/scan_code_map.py src tests
+```
+
+更新日志时也可以显式写入模块、函数和验证信息：
+
+```bash
+python3 scripts/update_worklog.py \
+  --workspace "$PWD" \
+  --language zh \
+  --status "修改中" \
+  --focus "正在处理登录模块" \
+  --module "登录模块|src/auth.py:1-120|处理登录输入和校验|配置模块|边界条件可能漏测|运行登录测试并尝试错误密码" \
+  --function "src/auth.py:42|login|校验输入并返回登录结果|检查调用处传入的凭据并运行测试" \
+  --segment "src/auth.py:40-58|登录校验|把输入转成业务层可用的结果|修改临时输入并确认错误提示变化"
+```
+
+## 开发与验证
+
+在仓库根目录运行：
+
+```bash
+python3 -m py_compile scripts/*.py daemon/*.py
+python3 -m unittest discover -s tests -v
+```
+
+构建 macOS app：
+
+```bash
+scripts/build_macos_app.sh
+```
+
+构建产物是 `dist/CodeCCTV.app`，`build/` 和 `dist/` 已加入 `.gitignore`。修改 Swift 浮窗后，应至少检查：拖动是否连续、展开/收起动画是否稳定、`×` 是否能关闭泡泡、隐藏后是否能从菜单栏恢复，以及常驻服务是否仍只有一个浮窗进程。
+
+## 隐私边界与限制
+
+- 所有状态服务监听地址都是 `127.0.0.1`，不是对外开放的远程服务。
+- 保存的是工作区级结构化摘要、事件和文件路径；不会把原始聊天全文写入 SQLite。
+- 服务令牌位于用户目录下的 `service.json`，不要提交到 Git。
+- 文件 watcher 只读取工作区文件元数据和路径摘要；它不读取聊天消息。
+- Codex 没有稳定的全局聊天 hook，所以交互、代码输出、工具输出和验证记录依赖 `code-cctv` skill 在当前任务中主动更新。
+- ChatGPT 跟随模式只判断标准安装路径下的 ChatGPT.app 进程是否存在；不会判断某个会话是否正在生成。
+- 函数扫描器目前主要覆盖 Python、JavaScript 和 TypeScript 的常见函数形态，扫描结果需要结合上下文复核。
+- 当前构建脚本是 arm64 目标；Intel Mac 需要调整 `scripts/build_macos_app.sh` 的 Swift 编译目标后再构建。
+
+## 排障
+
+### 浮窗没有出现
+
+先执行：
+
+```bash
+python3 scripts/manage_service.py status
+```
+
+确认 `ChatGPT: running`，且 `com.code-cctv.lifecycle`、`com.code-cctv.daemon`、`com.code-cctv.floating` 均为 `loaded`。如果 ChatGPT 已退出，浮窗自动停止是预期行为。
+
+### 出现两个图标或两个浮窗
+
+通常是同时使用了 LaunchAgent 常驻服务和 `scripts/run_macos_app.sh` 手动启动。退出手动启动的 app，并只保留一种启动方式；仍异常时执行：
+
+```bash
+python3 scripts/manage_service.py uninstall
+python3 scripts/manage_service.py install
+```
+
+### 卸载插件后浮窗仍在
+
+正常卸载插件后，lifecycle watcher 最多等待约 15 秒确认缓存消失，然后会停止 daemon、浮窗和 watcher，并删除三个 LaunchAgent。若只是更新 cachebuster，这段宽限时间用于避免误清理。
+
+### 日志有更新但浮窗未刷新
+
+确认 daemon 正在运行，并检查 `service.json` 是否存在。服务不可用不会阻塞 `AI_WORKLOG.md`；恢复 daemon 后，浮窗会通过 SSE 重新连接。
+
+## 贡献前检查
+
+提交前建议依次执行：
+
+```bash
+python3 -m py_compile scripts/*.py daemon/*.py
+python3 -m unittest discover -s tests -v
+git status --short
+```
+
+不要提交以下本地运行数据：
+
+- `AI_WORKLOG.md`
+- `build/`、`dist/`
+- `~/Library/Application Support/CodeCCTV/` 下的 SQLite、令牌和日志

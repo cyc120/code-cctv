@@ -4,11 +4,15 @@
 from __future__ import annotations
 
 import argparse
+import os
 import re
+import tempfile
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
+
+from event_client import post_event
 
 
 START = "<!-- code-cctv:start -->"
@@ -254,15 +258,35 @@ def now_text(timezone: str) -> str:
     return datetime.now(ZoneInfo(timezone)).strftime("%Y-%m-%d %H:%M:%S %Z")
 
 
+def split_escaped_values(raw: str) -> list[str]:
+    parts: list[str] = []
+    current: list[str] = []
+    index = 0
+    while index < len(raw):
+        char = raw[index]
+        if char == "\\" and index + 1 < len(raw) and raw[index + 1] in {"|", "\\"}:
+            current.append(raw[index + 1])
+            index += 2
+            continue
+        if char == "|":
+            parts.append("".join(current).strip())
+            current = []
+        else:
+            current.append(char)
+        index += 1
+    parts.append("".join(current).strip())
+    return parts
+
+
 def split_row(raw: str, size: int) -> list[str]:
-    parts = [part.strip() for part in raw.split("|")]
+    parts = split_escaped_values(raw)
     if len(parts) < size:
         parts.extend([""] * (size - len(parts)))
     return parts[:size]
 
 
 def escape_cell(value: str) -> str:
-    return value.replace("|", "\\|").replace("\n", "<br>")
+    return value.replace("\\", "\\\\").replace("|", "\\|").replace("\n", "<br>")
 
 
 def parse_table(lines: list[str], headings: list[str], columns: int) -> list[list[str]]:
@@ -275,7 +299,9 @@ def parse_table(lines: list[str], headings: list[str], columns: int) -> list[lis
             break
         if not line.startswith("|"):
             continue
-        cells = [cell.strip().replace("\\|", "|").replace("<br>", "\n") for cell in line.strip("|").split("|")]
+        raw_line = line.strip()
+        raw_cells = raw_line[1:-1] if raw_line.endswith("|") else raw_line[1:]
+        cells = [cell.replace("<br>", "\n") for cell in split_escaped_values(raw_cells)]
         if len(cells) == columns:
             rows.append(cells)
     return rows
@@ -601,6 +627,30 @@ def replace_section(existing: str, rendered: str) -> str:
     return existing[:start] + rendered.rstrip() + existing[end:]
 
 
+def atomic_write_text(path: Path, content: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    existing_mode = path.stat().st_mode & 0o777 if path.exists() else None
+    descriptor, temporary_name = tempfile.mkstemp(
+        prefix=f".{path.name}.",
+        suffix=".tmp",
+        dir=path.parent,
+    )
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8", newline="") as handle:
+            handle.write(content)
+            handle.flush()
+            os.fsync(handle.fileno())
+        temporary_path = Path(temporary_name)
+        if existing_mode is not None:
+            os.chmod(temporary_path, existing_mode)
+        os.replace(temporary_path, path)
+    finally:
+        try:
+            os.unlink(temporary_name)
+        except FileNotFoundError:
+            pass
+
+
 def main() -> None:
     args = parse_args()
     workspace = Path(args.workspace).expanduser().resolve()
@@ -638,7 +688,21 @@ def main() -> None:
     normalize_worklog_language(worklog, args.language)
     rendered = render_worklog(worklog, timestamp, args.language)
     existing = path.read_text(encoding="utf-8") if path.exists() else ""
-    path.write_text(replace_section(existing, rendered), encoding="utf-8")
+    atomic_write_text(path, replace_section(existing, rendered))
+    post_event(
+        {
+            "workspace": str(workspace),
+            "workspace_name": workspace.name,
+            "event_type": "file-change" if args.touch else "progress",
+            "source": "update_worklog.py",
+            "phase": args.phase or "",
+            "status": worklog.status,
+            "focus": worklog.focus,
+            "note": args.note or "工作日志已更新。",
+            "evidence": args.evidence,
+            "files": [split_row(row, 3)[0] for row in args.touch],
+        }
+    )
     print(path)
 
 
